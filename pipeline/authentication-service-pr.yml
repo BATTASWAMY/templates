@@ -1,0 +1,37 @@
+trigger: none
+
+pool:
+  name: Linux
+
+resources:
+  repositories:
+    - repository: templates
+      type: git
+      ref: refs/heads/releases/0.2.0
+      name: GTOKL-DevOps/azdo-pipeline-templates
+      trigger: none
+
+parameters:
+  - name: runSonarScan
+    displayName: Enable Sonar Scan
+    type: boolean
+    default: false
+
+variables:
+  projectRoot: $(Build.SourcesDirectory)/auth-service
+
+steps:
+- template: ./spring-boot-k8s/pr.yml@templates
+  parameters:
+    isSelfHostedAgent: true
+    javaVersion: 11
+    pomFileDir: $(projectRoot)
+    runSonarScan: ${{parameters.runSonarScan}}
+    sonarInstance: SonarQube
+    sonarProjectKey: NPCSP_12821_Authentication_Service 
+    sonarProjectName: 'NPCSP_12821_Authentication_Service'
+    sonarExtraProperties: |
+      sonar.projectBaseDir=$(projectRoot)
+      sonar.sources=src/main/
+      sonar.tests=src/test/
+      sonar.java.binaries=target/classes

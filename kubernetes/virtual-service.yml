@@ -1,0 +1,19 @@
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: ppx-authentication-virtualservice
+  namespace: #{K8S_NAMESPACE}#
+spec:
+  hosts:
+  - #{INGRESS_HOST}#
+  gateways:
+  - ppx-gateway
+  http:
+  - match:
+    - uri:
+        prefix: /security
+    route:
+    - destination:
+        host: ppx-authentication-service.ppx.svc.cluster.local
+        port:
+          number: 80

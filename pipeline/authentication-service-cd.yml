@@ -1,0 +1,147 @@
+trigger: 
+ - none
+resources:
+  pipelines:
+    - pipeline: AuthenticationServiceCI # Name of the pipeline resource
+      source: ppx/authentication-service-ci # Name of the triggering pipeline
+      trigger:
+        branches:
+          include:
+          - master
+          - releases/*
+  repositories:
+    - repository: templates
+      type: git
+      ref: refs/heads/features/upgrade-kubelogin
+      name: GTOKL-DevOps/azdo-pipeline-templates
+      trigger: none
+
+pool:
+  name: Linux
+
+variables:
+  k8sDescriptorsDir: '$(Pipeline.Workspace)/AuthenticationServiceCI/drop/auth-service/kubernetes'
+  serviceName: ppx-authentication-service
+  IMAGE_TAG: $(resources.pipeline.AuthenticationServiceCI.runName)
+
+stages:
+  - stage: PreDeploy
+    jobs:
+      - job: 
+        workspace:
+          clean: all
+
+# Deploy to DEV environment
+  - template: ./common/spring-boot-k8s-stage-cd.yml@templates
+    parameters:
+      stageName: DEV
+      serviceName: ${{variables.serviceName}}
+      armServiceConnection: 'APAC MCP - NonProd Automation SP'
+      azureResourceGroup: 'RG_12821_NPMONE_DEV'
+      kubernetesCluster: 'AZAPACSA01KUB12821DV01'
+      kvServiceConnection: 'APAC MCP - NonProd Automation SP'
+      kvName: 'kyv12821s1dv01'
+
+  - stage: Pre_QA
+    pool: 
+      name: Linux
+    jobs:
+    - deployment: PreDeploy
+      environment: '12821-PPX-QA'
+      strategy:
+        runOnce:
+          deploy:
+            steps:
+              - task: AzureCLI@2
+                displayName: 'Promote container image to QA'
+                inputs:
+                  azureSubscription: 'APAC MCP - QAProd Automation SP'
+                  scriptType: pscore
+                  scriptLocation: inlineScript
+                  inlineScript: |
+                    az acr import `
+                    --name acr13502s1qa01.azurecr.io `
+                    --source $(serviceName):$(IMAGE_TAG) `
+                    --image $(serviceName):$(IMAGE_TAG) `
+                    --registry /subscriptions/2b130fbd-3e4d-410e-bb4a-80324b187893/resourceGroups/RG_12821_NPMONE_DEV/providers/Microsoft.ContainerRegistry/registries/acr12821s1dv01
+
+# Deploy to QA environment
+  - template: ./common/spring-boot-k8s-stage-cd.yml@templates
+    parameters:
+      stageName: QA
+      serviceName: ${{variables.serviceName}}
+      armServiceConnection: 'APAC MCP - QAProd Automation SP'
+      azureResourceGroup: 'RG_13502_NPMONE_QA'
+      kubernetesCluster: 'AZAPACSA01KUB13502QA01'
+      kvServiceConnection: 'APAC MCP - QAProd Automation SP'
+      kvName: 'kyv13502s1qa01'
+
+# Pre Deploy to DR environment
+  - stage: Pre_DR
+    pool: 
+      name: Linux
+    jobs:
+    - deployment: PreDeploy
+      environment: 'ppx-authentication-service-dr'
+      strategy:
+        runOnce:
+          deploy:
+            steps:
+              - task: AzureCLI@2
+                displayName: 'Promote container image to DR'
+                inputs:
+                  azureSubscription: 'APAC MCP - QAProd Automation SP'
+                  scriptType: pscore
+                  scriptLocation: inlineScript
+                  inlineScript: |
+                    az acr import `
+                    --name acr13502jedr01.azurecr.io `
+                    --source $(serviceName):$(IMAGE_TAG) `
+                    --image $(serviceName):$(IMAGE_TAG) `
+                    --registry /subscriptions/2569b811-f06d-4d21-8409-5c9a94693846/resourceGroups/RG_13502_NPMONE_QA/providers/Microsoft.ContainerRegistry/registries/acr13502s1qa01
+
+# Deploy to DR environment
+  - template: ./common/spring-boot-k8s-stage-cd.yml@templates
+    parameters:
+      stageName: DR
+      serviceName: ${{variables.serviceName}}
+      armServiceConnection: 'APAC MCP - QAProd Automation SP'
+      azureResourceGroup: 'RG_13502_NPMONE_DR'
+      kubernetesCluster: 'AZAPACJE01KUB13502DR01'
+      kvServiceConnection: 'APAC MCP - QAProd Automation SP'
+      kvName: 'kyv13502jedr01'
+
+# Pre Deploy to PROD environment
+  - stage: Pre_PROD
+    pool: 
+      name: Linux
+    jobs:
+    - deployment: PreDeploy
+      environment: 'ppx-authentication-service-prod'
+      strategy:
+        runOnce:
+          deploy:
+            steps:
+              - task: AzureCLI@2
+                displayName: 'Promote container image to PROD'
+                inputs:
+                  azureSubscription: 'APAC MCP - QAProd Automation SP'
+                  scriptType: pscore
+                  scriptLocation: inlineScript
+                  inlineScript: |
+                    az acr import `
+                    --name acr13502s1pr01.azurecr.io `
+                    --source $(serviceName):$(IMAGE_TAG) `
+                    --image $(serviceName):$(IMAGE_TAG) `
+                    --registry /subscriptions/2569b811-f06d-4d21-8409-5c9a94693846/resourceGroups/RG_13502_NPMONE_QA/providers/Microsoft.ContainerRegistry/registries/acr13502s1qa01
+
+# Deploy to PROD environment
+  - template: ./common/spring-boot-k8s-stage-cd.yml@templates
+    parameters:
+      stageName: PROD
+      serviceName: ${{variables.serviceName}}
+      armServiceConnection: 'APAC MCP - QAProd Automation SP'
+      azureResourceGroup: 'RG_13502_NPMONE_PROD'
+      kubernetesCluster: 'AZAPACSA01KUB13502PR01'
+      kvServiceConnection: 'APAC MCP - QAProd Automation SP'
+      kvName: 'kyv13502s1pr01'
